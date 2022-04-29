@@ -25,33 +25,6 @@ struct Conv2DLayer{
     stride : (u64, u64)
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct CharacterisationParameters{
-    min_iterations : u64,
-    max_iterations : u64,
-    error_margin : f64,
-    confidence : f64
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct Conv2DParameters{
-    filter : Vec<u64>,
-    in_c: Vec<u64>,
-    in_s : Vec<u64>,
-    kx : Vec<u64>,
-    ky : Vec<u64>,
-    stride : Vec<u64>,
-    maximum_complexity : u64
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct TimingConfig{
-    characterisation_parameters : CharacterisationParameters,
-    parameters : Conv2DParameters,
-    modes : Vec<String>
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct FullConfig{
-    hardware : HashMap<String, HashMap<String, HashMap<String, TimingConfig>>>
-}
 impl Conv2DLayer{
     fn new(input_size : (u64, u64, u64), kernel : (u64, u64), filters : u64, stride : (u64, u64)) -> Conv2DLayer{
         Conv2DLayer{
@@ -71,7 +44,7 @@ impl epi::App for MyEguiApp {
     fn update(&mut self, ctx: &egui::Context, frame: &epi::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Hello World!");
-            // example_inputs(self, ui);
+            example_inputs(self, ui);
             example_plot(ui, self.frequency, &self.graph_data);
         });
     }
@@ -104,7 +77,6 @@ fn example_plot(ui: &mut egui::Ui, frequency : f64, graph_data : &HashMap<String
                 Values::from_values_iter(
                     (0..v.len()).map(
                         |i| {
-
                             Value::new(i as f64, v[i] as f64)
                         }
                     )
@@ -140,19 +112,6 @@ fn example_inputs(window : &mut MyEguiApp, ui: &mut egui::Ui){
         window.frequency += 1.0;
     }
     ui.label(format!("Hello '{}', age {}", window.name, window.age));
-}
-
-
-fn calc_activation_mem(layer : &Conv2DLayer) -> u64{
-    // let input_activations : u64 = layer.input_size.0 * layer.input_size.1 * layer.input_size.2;
-    // let output_activations : u64 = layer.output_size.0 * layer.output_size.1 * layer.output_size.2;
-    let input_activations : u64 = layer.input_size.0 * layer.kernel.1 * layer.input_size.2;
-    let output_activations : u64 = layer.output_size.0 * layer.kernel.1 * layer.output_size.2;
-    return input_activations + output_activations;
-}
-fn calc_weights_mem(layer : &Conv2DLayer) -> u64{
-
-    return layer.input_size.2 * layer.output_size.2 * layer.kernel.0 * layer.kernel.1 + layer.output_size.2;
 }
 fn simulate_memory(){
     let total_mem : f64 = 2.5 * 2.0f64.powf(20.0);
@@ -190,13 +149,6 @@ fn simulate_memory(){
             }
         }
     }
-    for (k, v) in &preloads_for_configs{
-        println!("{}", k);
-        println!("{:?}", v);
-    }
-
-
-
     let mut app = MyEguiApp::default();
     app.graph_data = preloads_for_configs.clone();
     let native_options = eframe::NativeOptions::default();
@@ -204,57 +156,4 @@ fn simulate_memory(){
 }
 fn main() {
     simulate_memory();
-    let reader: File = File::open("./config.json").unwrap();
-    let config : FullConfig = serde_json::from_reader(reader).unwrap();
-    let conv2d_config : Conv2DParameters = config.hardware.get("MyriadX").unwrap().get("Conv2D").unwrap().get("timing").unwrap().parameters.clone();
-    // println!("{:?}", conv2d_config);
-    let mut num_examples_per_mem : HashMap<u64, u64> = HashMap::new();
-    let mut max_mem = 0;
-    for input_s in &conv2d_config.in_s{
-        for input_c in &conv2d_config.in_c{
-            for filter in &conv2d_config.filter{
-                for kernel_x in &conv2d_config.kx{
-                    for kernel_y in &conv2d_config.ky {
-                        for stride in &conv2d_config.stride{
-
-                            // let input_size : (u64, u64, u64) =
-                            let conv_layer : Conv2DLayer = Conv2DLayer::new((*input_s, *input_s, *input_c), (*kernel_x, *kernel_y), *filter, (*stride, *stride));
-
-                            let activation_mem : u64 = calc_activation_mem(&conv_layer);
-                            let weights_mem : u64 = calc_weights_mem(&conv_layer);
-
-                            let mem : u64 = activation_mem + weights_mem;
-                            if mem > max_mem{
-                                max_mem = mem;
-                            }
-                            match num_examples_per_mem.get(&mem){
-                                None => {
-                                    num_examples_per_mem.insert(mem, 1);
-                                }
-                                Some(previous) => {
-                                    num_examples_per_mem.insert(mem, previous + 1);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    println!("{}", max_mem);
-    let mut num_configs_per_example_count : HashMap<u64, u64> = HashMap::new();
-    println!("{:?}", num_examples_per_mem.len());
-    for (mem, count) in &num_examples_per_mem{
-        match num_configs_per_example_count.get(&count){
-            None => {
-                num_configs_per_example_count.insert(*count, 1);
-            }
-            Some(previous) => {
-                num_configs_per_example_count.insert(*count, previous + 1);
-            }
-        }
-    }
-    println!("{:?}", num_configs_per_example_count.get(&1));
-    println!("{:?}", num_configs_per_example_count.get(&2));
-    println!("{:?}", num_configs_per_example_count.get(&3));
 }
